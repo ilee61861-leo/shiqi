@@ -41,23 +41,25 @@ def save(out,name,draw):
     pil=Image.fromarray(np.clip(out,0,255).astype(np.uint8)); draw(ImageDraw.Draw(pil),pil)
     pil.save(f"work/{name}.png"); pil.resize((600,900)).save(f"work/{name}_prev.jpg")
 
-def pressure():                      # v2: closer, half the face swallowed by shadow
-    pw=3100; s=pw/1320; fxs,fys=640,440; px=1000-fxs*s; py=1180-fys*s
-    D=load("b",px,py,pw); fx,fy=D["P"](fxs,fys)
-    fig,fall=dark_fig(D,fx,fy,fall_len=1750,floor=0.05,side_w=95,side_off=-10,gamma=1.45)
-    bg=np.ones((SH,SW,3),np.float32)*np.array([3,4,9.])
-    bg+=np.exp(-(((xx-fx+700)/800)**2+((yy-fy+200)/1100)**2))[...,None]*np.array([14,26,70.])
-    m=D["m"]; out=bg*(1-m[...,None])+fig*m[...,None]
-    eye=D["red"]*(yy<fy+420)*(yy>fy-400); out+=glow(eye,np.array([255,30,50.]),0.8)
-    # long red streak through the eye
+def pressure():                      # v1 framing (space around her) + looming shadow + red streak
+    pw=2300; px,py=-150,250; D=load("b",px,py,pw); fx,fy=D["P"](640,440)
+    fig,fall=dark_fig(D,fx,fy,fall_len=1500,floor=0.16,side_w=120,side_off=30,gamma=1.35)
+    bg=np.ones((SH,SW,3),np.float32)*np.array([4,5,12.])
+    bg+=np.exp(-(((xx-fx+250)/900)**2+((yy-fy+150)/1000)**2))[...,None]*np.array([18,34,86.])
+    m=D["m"]
+    big=cv2.warpAffine(m,np.float32([[1.55,0,fx-1.55*fx+260],[0,1.55,fy-1.55*fy-120]]),(SW,SH))
+    bg*=(1-0.85*cv2.GaussianBlur(big,(0,0),18))[...,None]
+    out=bg*(1-m[...,None])+fig*m[...,None]
+    eye=D["red"]*(yy<fy+200)*(yy>fy-250); out+=glow(eye,np.array([255,30,50.]),0.7)
     ey,ex=np.unravel_index(np.argmax(cv2.GaussianBlur(eye,(0,0),25)),eye.shape)
-    streak=np.exp(-((yy-ey)/5.0)**2)*np.exp(-((xx-ex)/620)**2); out+=streak[...,None]*np.array([255,40,60.])*0.75
-    out*=np.clip(1-np.clip(yy-2150,0,None)/650,0,1)[...,None]**1.5
-    out=finish(out,6.5,0.7)
+    streak=np.exp(-((yy-ey)/4.0)**2)*np.exp(-((xx-ex)/520)**2); out+=streak[...,None]*np.array([255,40,60.])*0.7
+    out*=np.clip(1-np.clip(yy-2050,0,None)/700,0,1)[...,None]**1.4
+    out=finish(out,6.0,0.6)
     def draw(d,pil):
-        f1=ImageFont.truetype(fm("Inter:black"),150); f2=ImageFont.truetype(fm("Inter:medium"),40)
-        spaced(d,"DON'T LOOK AWAY",f1,2560,(232,236,246),6)
-        spaced(d,"SHE HAS ALREADY SEEN YOU",f2,2780,(236,24,48),16)
+        f1=ImageFont.truetype(fm("Inter:black"),176); f2=ImageFont.truetype(fm("Inter:medium"),44)
+        spaced(d,"DON'T LOOK",f1,2380,(232,236,246),10); spaced(d,"AWAY",f1,2570,(232,236,246),10)
+        d.rectangle((SW//2-60,2800,SW//2+60,2805),fill=(236,24,48))
+        spaced(d,"SHE HAS ALREADY SEEN YOU",f2,2835,(236,24,48),14)
     save(out,"t1_pressure",draw)
 
 def standoff():                      # ink close-up, eye to fingertip
@@ -120,4 +122,30 @@ def twoface():                       # yellow halftone | cold dark, split betwee
         w1=d.textlength("am i?",font=f1); d.text((1890-w1,110),"am i?",font=f1,fill=(240,236,226))
         spaced(d,"EVERY NIGHT",f2,385,(255,196,40),2,right=1885)
     save(out,"t3_twoface",draw)
+def twoface_b():
+    pw=2000; sc=pw/1320; SX=592; px=1000-SX*sc; py=330
+    D=load("b",px,py,pw); m=D["m"][...,None]; fx,fy=D["P"](SX,440)
+    NAVY=np.array([38,36,96.]); MINT=np.array([196,228,178.]); CREAM=np.array([253,247,222.]); YEL=np.array([248,231,70.])
+    base=np.ones((SH,SW,3),np.float32)*MINT; light=np.clip((cv2.GaussianBlur((D["L"]>0.6).astype(np.float32),(0,0),2.5)-0.5)*5+0.5,0,1)
+    blue=D["blue"]*(yy>py+600*sc)
+    for w,c in((blue,np.array([150,140,214.])),(light,CREAM),(D["gold"],np.array([240,170,60.])),(D["red"],np.array([214,52,74.]))):
+        base=base*(1-w[...,None])+c*w[...,None]
+    dark=1-np.power(np.clip(cv2.GaussianBlur(D["L"],(0,0),1.5),0,1),0.42); dark=np.clip((dark-0.10)/0.82,0,1)
+    ink=np.maximum(halftone(dark),np.clip((0.085-D["L"])*40+0.5,0,1))[...,None]
+    ol=cv2.dilate(D["m"],cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(11,11)))[...,None]
+    A=np.ones((SH,SW,3),np.float32)*YEL; A=A*(1-ol)+NAVY*ol; A=A*(1-m)+(base*(1-ink)+NAVY*ink)*m
+    fig,fall=dark_fig(D,fx,fy,fall_len=2300,floor=1.0,keep=(1,0),gamma=1.25)
+    Bk=np.ones((SH,SW,3),np.float32)*np.array([4,5,12.])+np.exp(-(((xx-fx+500)/900)**2+((yy-fy)/1100)**2))[...,None]*np.array([16,30,78.])
+    Bk=Bk*(1-m)+fig*m
+    seam=1000+(yy-1500)*0.10
+    reye=D["red"]*(xx<seam)*(yy<fy+160)*(yy>fy-200); Bk+=glow(reye,np.array([255,30,50.]),0.75)
+    Bk=finish(Bk,5.5,0.45)
+    w=np.clip((seam-xx)/2+0.5,0,1)[...,None]; out=A*(1-w)+Bk*w
+    line=np.clip(1-np.abs(xx-seam)/5,0,1)[...,None]; out=out*(1-line)+np.array([250,248,240.])*line
+    def draw(d,pil):
+        f1=ImageFont.truetype("fonts/Yellowtail-Regular.ttf",250); f2=ImageFont.truetype(fm("Inter:bold"),54)
+        d.text((110,110),"or not?",font=f1,fill=(240,236,226)); spaced(d,"EVERY NIGHT",f2,385,(236,24,48),2,left=118)
+        w1=d.textlength("i'm ok",font=f1); d.text((1890-w1,110),"i'm ok",font=f1,fill=(214,52,74))
+        spaced(d,"HAPPY EVERYDAY",f2,385,(40,38,60),2,right=1885)
+    save(out,"t4_twoface_b",draw)
 for n in sys.argv[1:] or ["pressure","standoff","twoface"]: globals()[n]()
