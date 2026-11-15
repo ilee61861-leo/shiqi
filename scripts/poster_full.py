@@ -58,5 +58,5 @@ def make(name,place,clear,blue_y,texts,tx,ty,align,out):
     x0,y0=clear[0][0]*pw/1320+px-450,clear[0][1]*pw/1320+py-450
     pil.crop((int(x0),int(y0),int(x0)+900,int(y0)+900)).save(out.replace(".png","_zoom.jpg"))
 # clear = (cx,cy,rx,ry) in source pixels: face, then hands
-make("a",(250,545,1500),[(640,720,430,400,1.0),(1090,1590,300,230,0.75)],1150,("i'm ok","HAPPY EVERYDAY"),1890,150,"r","work/full1.png")
+make("a",(150,514,1700),[(640,720,430,400,1.0),(1090,1590,300,230,0.75)],1150,("i'm ok","HAPPY EVERYDAY"),1890,150,"r","work/full1.png")
 make("b",(430,200,1500),[(640,450,400,400,1.0),(985,1640,260,360,0.75)],600,("so am i","HAPPY EVERY NIGHT"),110,150,"l","work/full2.png")
