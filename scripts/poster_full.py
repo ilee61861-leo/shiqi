@@ -25,24 +25,21 @@ def make(name,place,clear,blue_y,texts,tx,ty,align,out):
     base=np.ones((H,W,3),np.float32)*MINT
     for wgt,col in((blue,VIO),(light,CREAM),(gold,GOLD),(red,RED)):
         wgt=np.clip((wgt-0.5)*5+0.5,0,1)[...,None]; base=base*(1-wgt)+col*wgt
-    # clear zones: soft ellipses (source px) + every red / gold accent stays crisp full colour
-    yy,xx=np.mgrid[0:H,0:W].astype(np.float32); c=np.zeros((H,W),np.float32)
-    for cx,cy,rx,ry in clear:
-        d=np.hypot((xx-cx*sc)/(rx*sc),(yy-cy*sc)/(ry*sc)); c=np.maximum(c,np.clip((1.0-d)/0.22,0,1))
-    c=c*c*(3-2*c)
-    acc=np.clip(cv2.GaussianBlur(cv2.dilate(((red>0.5)|(gold>0.5)).astype(np.float32),np.ones((9,9),np.uint8)),(0,0),4)*1.3,0,1)
-    c=np.maximum(c,acc)
+    # focus field: wide gaussian falloffs around each focus point, merged smoothly (no hard edge anywhere)
+    yy,xx=np.mgrid[0:H,0:W].astype(np.float32); inv=np.ones((H,W),np.float32)
+    for cx,cy,rx,ry,amt in clear:
+        d2=((xx-cx*sc)/(rx*sc))**2+((yy-cy*sc)/(ry*sc))**2; inv*=1-amt*np.exp(-d2*0.9)
+    c=1-inv
     dark=1-np.power(np.clip(cv2.GaussianBlur(L,(0,0),1.5),0,1),0.42); dark=np.clip((dark-0.10)/0.82,0,1)
-    ink=halftone(dark,7.0*SS,np.deg2rad(45))
+    dots=halftone(dark,7.0*SS,np.deg2rad(45))
+    dots_soft=cv2.GaussianBlur(dots,(0,0),2.2*SS)              # out-of-focus screen far from the focus
+    far=np.clip(1-c*2.2,0,1); dots=dots*(1-0.55*far)+dots_soft*0.55*far
+    cont=np.clip(1.63*dark,0,1)                                # same ink coverage as the dots, but continuous
     solid=np.clip((0.085-cv2.GaussianBlur(L,(0,0),1.0))*40+0.5,0,1)
-    ink=np.maximum(ink,solid)[...,None]
+    ink=np.maximum(dots*(1-c)+cont*c,solid)[...,None]          # dots lose contrast gradually -> smooth tone
     ht=base*(1-ink)+NAVY*ink
-    # crisp layer: original art, unsharp-masked and lifted a little so it reads as the "lit" part
-    o=im*255; o=o+0.7*(o-cv2.GaussianBlur(o,(0,0),3)); o=255*np.power(np.clip(o/255,0,1),0.88)
-    # dissolve between the two looks through the dot screen itself instead of a grey cross-fade
-    p=7.0*SS; a_=np.deg2rad(45); u=(xx*np.cos(a_)+yy*np.sin(a_))/p; v=(-xx*np.sin(a_)+yy*np.cos(a_))/p
-    df=np.hypot(u-np.round(u),v-np.round(v))/0.7071
-    cb=np.clip((c*1.25-0.12-df)*p/2+0.5,0,1)[...,None]
+    o=im*255; o=o+0.6*(o-cv2.GaussianBlur(o,(0,0),3)); o=255*np.power(np.clip(o/255,0,1),0.85)
+    cb=(0.8*np.power(c,1.6))[...,None]                         # true colour and sharpness only arrive near the centre
     ch=ht*(1-cb)+o*cb
     k=cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(9*SS//2*2+1,)*2); ol=cv2.dilate(m,k)
     CW,CH=SW*SS,SH*SS; canvas=np.ones((CH,CW,3),np.float32)*YEL
@@ -61,5 +58,5 @@ def make(name,place,clear,blue_y,texts,tx,ty,align,out):
     x0,y0=clear[0][0]*pw/1320+px-450,clear[0][1]*pw/1320+py-450
     pil.crop((int(x0),int(y0),int(x0)+900,int(y0)+900)).save(out.replace(".png","_zoom.jpg"))
 # clear = (cx,cy,rx,ry) in source pixels: face, then hands
-make("a",(250,545,1500),[(640,700,300,290),(600,890,190,190),(1090,1590,210,150)],1150,("i'm ok","HAPPY EVERYDAY"),1890,150,"r","work/full1.png")
-make("b",(430,200,1500),[(640,440,270,270),(985,1640,150,260)],600,("so am i","HAPPY EVERY NIGHT"),110,150,"l","work/full2.png")
+make("a",(250,545,1500),[(640,720,430,400,1.0),(1090,1590,300,230,0.75)],1150,("i'm ok","HAPPY EVERYDAY"),1890,150,"r","work/full1.png")
+make("b",(430,200,1500),[(640,450,400,400,1.0),(985,1640,260,360,0.75)],600,("so am i","HAPPY EVERY NIGHT"),110,150,"l","work/full2.png")
